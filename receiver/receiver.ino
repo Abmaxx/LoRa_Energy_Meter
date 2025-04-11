@@ -1,53 +1,61 @@
 #include <SPI.h>
-#include <LoRa.h>
+#include "LoRa.h"
 
-// Pin configuration for SX1278 module
-#define SCK     5
-#define MISO    19
-#define MOSI    27
-#define SS      18
-#define RST     23
-#define DIO0    26
-
-#define BAND    433E6 
-byte data[50];
-
+int SyncWord = 0x22;
 
 void setup() {
-  Serial.begin(115200);
-  SPI.begin(SCK, MISO, MOSI, SS);
-  LoRa.setPins(SS, RST, DIO0);
+    Serial.begin(9600);
+    while (!Serial);
 
-  if (!LoRa.begin(BAND)) {
-    Serial.println("Starting LoRa failed!");
-    while (1);
-  }
+    Serial.println("LoRa Receiver Initializing...");
 
-  // Optional: Match these to sender for better performance
-  LoRa.setSpreadingFactor(12);
-  LoRa.setSignalBandwidth(125E3);
-  LoRa.setCodingRate4(5);
+    if (!LoRa.begin(433E6)) {
+        Serial.println("LoRa init failed. Check wiring.");
+        while (1);
+    }
 
-  Serial.println("LoRa Receiver Ready");
+    LoRa.setSpreadingFactor(9);
+    LoRa.setSignalBandwidth(62.5E3);
+    LoRa.setSyncWord(SyncWord);
+    LoRa.enableCrc();
+
+    Serial.println("LoRa init succeeded. Waiting for packets...");
 }
 
-void loop (){
-  // try to parse packet
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    // received a packet
-    Serial.print("Received packet size ");
-    Serial.print(packetSize);
-    Serial.print(" data ");
-    // read packet
-    while (LoRa.available())
-    for(int i=0;i<packetSize;i++){
-      data[i]= LoRa.read();
-      Serial.print(' ');
-      Serial.print(data[i]);
+void loop() {
+    int packetSize = LoRa.parsePacket();
+    if (packetSize == 6) {  
+        byte payload[6];
+        for (int i = 0; i < 6; i++) {
+            payload[i] = LoRa.read();
+        }
+
+        int value1 = (payload[0] << 8) | payload[1];
+        int value2 = (payload[2] << 8) | payload[3];
+        int nodeID = (payload[4] << 8) | payload[5];
+
+        Serial.print("Received from Node ID: ");
+        Serial.println(nodeID);
+
+        if (nodeID == 1) {  
+            Serial.print("Sensor 1 (SM1) Value: ");
+            Serial.println(value1);
+            Serial.print("Sensor 2 (SM2) Value: ");
+            Serial.println(value2);
+        } else if (nodeID == 2) { 
+            float batteryVoltage = value1 / 100.0;
+            Serial.print("Battery Voltage: ");
+            Serial.print(batteryVoltage);
+            Serial.println(" V");
+            Serial.print("Raw ADC: ");
+            Serial.println(value2);
+        } else {
+            Serial.println("Unknown Node ID");
+            Serial.print("Raw1: ");
+            Serial.println(value1);
+            Serial.print("Raw2: ");
+            Serial.println(value2);
+        }
+
     }
-    // print RSSI of packet
-    Serial.print("' with RSSI ");
-    Serial.println(LoRa.packetRssi());
-  }
 }
